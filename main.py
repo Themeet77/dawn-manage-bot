@@ -376,7 +376,7 @@ def login_user(email, password, app_id, proxies):
                     log_message("Invalid CAPTCHA, retrying with new captcha...", "warning")
                     continue
                 else:
-                    log_message(f"Login failed with status {response.status_code}", "error")
+                    log_message(f"Login failed with status {response.status_code}, retrying...", "warning")
                     retry_count += 1
                     break
                     
@@ -515,7 +515,7 @@ def process_single_account(current_account, proxy_manager, email_domain, referra
                     log_message("Invalid CAPTCHA, retrying with new captcha...", "warning")
                     continue
                 else:
-                    log_message(f"Registration failed with status {status_code}, retrying...", "error")
+                    log_message(f"Registration failed with status {status_code}, retrying...", "warning")
                     retry_count += 1
                     if retry_count >= MAX_RETRIES:
                         return False
