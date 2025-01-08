@@ -261,7 +261,7 @@ def get_verification_link(email, domain, proxies):
                 maillink = mailextra.find('a', {'class': 'maillink'})
                 if maillink:
                     link = maillink.text.strip()
-                    if 'verifylink' in link:
+                    if 'verifyconfirm' in link:
                         log_message("Verification link found", "success")
                         return link
             
