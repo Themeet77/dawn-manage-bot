@@ -3,7 +3,6 @@ import json
 import names
 import os
 import random
-import requests
 import string
 from bs4 import BeautifulSoup
 from colorama import init, Fore, Style
@@ -12,6 +11,7 @@ from datetime import datetime, timezone
 from fake_useragent import UserAgent
 from twocaptcha import TwoCaptcha
 from anticaptchaofficial.imagecaptcha import *
+from anticaptchaofficial.turnstileproxyless import turnstileProxyless
 
 init(autoreset=True)
 ua = UserAgent()
@@ -19,7 +19,7 @@ ua = UserAgent()
 model = None
 successful_accounts = 0
 failed_accounts = 0
-MAX_RETRIES = 10 
+MAX_RETRIES = 10
 
 def print_summary():
     total = successful_accounts + failed_accounts
@@ -43,7 +43,7 @@ def get_headers(token=None):
         'user-agent': ua.chrome
     }
     if token:
-        headers['Authorization'] = f'Brearer {token}'
+        headers['Authorization'] = f'Bearer {token}'
     return headers
 
 class ProxyManager:
@@ -115,10 +115,11 @@ def get_random_domain(proxies):
     retry_count = 0
     while retry_count < MAX_RETRIES:
         try:
-            response = requests.get(
+            response = curl_requests.get(
                 f'https://generator.email/search.php?key={keyword}',
                 headers=get_headers(),
                 proxies=proxies,
+                impersonate="chrome110",
                 timeout=120
             )
             domains = response.json()
@@ -132,7 +133,7 @@ def get_random_domain(proxies):
             log_message("Could not find valid domain", "error")
             return None
             
-        except (requests.RequestException, json.JSONDecodeError) as e:
+        except Exception as e:
             retry_count += 1
             if retry_count < MAX_RETRIES:
                 log_message(f"Connection error: {str(e)}. Retrying... ({retry_count}/{MAX_RETRIES})", "warning")
@@ -234,6 +235,68 @@ def process_image(base64_image, solver_type):
         log_message(f"Error solving captcha: {str(e)}", "error")
         raise
 
+def verify_email(verification_url, proxies, solver_type, api_key):
+    log_message("Verifying email...", "process")
+    retry_count = 0
+    
+    while retry_count < MAX_RETRIES:
+        try:
+            key = verification_url.split('key=')[1]
+            
+            response = curl_requests.get(
+                verification_url,
+                headers=get_headers(),
+                proxies=proxies,
+                impersonate="chrome110",
+                timeout=120
+            )
+
+            if solver_type == "2captcha":
+                solver = TwoCaptcha(api_key)
+                result = solver.turnstile(
+                    sitekey="0x4AAAAAAA0DVmzm9PiLTNuf",
+                    url=f"https://www.aeropres.in/chromeapi/dawn/v1/userverify/verifyconfirm?key={key}"
+                )
+                turnstile_token = result['code']
+            else:
+                solver = turnstileProxyless()
+                solver.set_verbose(0)
+                solver.set_key(api_key)
+                solver.set_website_url(f"https://www.aeropres.in/chromeapi/dawn/v1/userverify/verifyconfirm?key={key}")
+                solver.set_website_key("0x4AAAAAAA0DVmzm9PiLTNuf")
+                solver.set_action("login")
+                turnstile_token = solver.solve_and_return_solution()
+                
+                if turnstile_token == 0:
+                    raise Exception("Failed to solve verification captcha")
+            
+            verify_response = curl_requests.post(
+                'https://www.aeropres.in/chromeapi/dawn/v1/userverify/verifycheck',
+                params={'key': key},
+                headers=get_headers(),
+                json={'token': turnstile_token},
+                proxies=proxies,
+                impersonate="chrome110",
+                timeout=120
+            )
+            
+            if verify_response.status_code == 200:
+                log_message("Email verification successful", "success")
+                return True
+            else:
+                log_message(f"Verification failed with status {verify_response.status_code}", "error")
+                retry_count += 1
+                
+        except Exception as e:
+            retry_count += 1
+            if retry_count < MAX_RETRIES:
+                log_message(f"Verification error: {str(e)}. Retrying... ({retry_count}/{MAX_RETRIES})", "warning")
+            else:
+                log_message(f"Verification failed after {MAX_RETRIES} attempts: {str(e)}", "error")
+                return False
+    
+    return False
+
 def get_verification_link(email, domain, proxies):
     log_message("Waiting for verification email...", "process")
     cookies = {
@@ -246,11 +309,12 @@ def get_verification_link(email, domain, proxies):
     
     while retry_count < max_attempts:
         try:
-            response = requests.get(
+            response = curl_requests.get(
                 'https://generator.email/inbox1/',
                 headers=get_headers(),
                 cookies=cookies,
                 proxies=proxies,
+                impersonate="chrome110",
                 timeout=120
             )
             
@@ -268,7 +332,7 @@ def get_verification_link(email, domain, proxies):
             log_message(f"Attempt {retry_count + 1}: Waiting for email...", "process")
             retry_count += 1
             
-        except requests.RequestException as e:
+        except Exception as e:
             retry_count += 1
             if retry_count < max_attempts:
                 log_message(f"Connection error getting verification link: {str(e)}. Retrying... ({retry_count}/{max_attempts})", "warning")
@@ -323,35 +387,6 @@ def register_user(puzzle_id, captcha_text, email, password, referral_code, app_i
             else:
                 log_message(f"Error registering user after {MAX_RETRIES} attempts: {str(e)}", "error")
                 return None
-
-def verify_email(verification_url, proxies):
-    log_message("Verifying email...", "process")
-    retry_count = 0
-    while retry_count < MAX_RETRIES:
-        try:
-            response = curl_requests.get(
-                verification_url, 
-                headers=get_headers(),
-                proxies=proxies,
-                impersonate="chrome110",
-                timeout=120
-            )
-            success = response.status_code == 200
-            
-            if success:
-                log_message("Email verification successful", "success")
-            else:
-                log_message("Email verification failed", "error")
-            return success
-            
-        except Exception as e:
-            retry_count += 1
-            if retry_count < MAX_RETRIES:
-                log_message(f"Connection error verifying email: {str(e)}. Retrying... ({retry_count}/{MAX_RETRIES})", "warning")
-            else:
-                log_message(f"Error verifying email after {MAX_RETRIES} attempts: {str(e)}", "error")
-                return False
-
 def login_user(email, password, app_id, proxies):
     log_message("Attempting to login...", "process")
     retry_count = 0
@@ -507,7 +542,7 @@ def get_user_points(token, app_id, proxies):
     
     return 0
 
-def process_single_account(current_account, proxy_manager, email_domain, referral_code, api_key):
+def process_single_account(current_account, proxy_manager, email_domain, referral_code, api_key, solver_type):
     retry_count = 0
     while retry_count < MAX_RETRIES:
         try:
@@ -550,35 +585,37 @@ def process_single_account(current_account, proxy_manager, email_domain, referra
             
             if registration_successful:
                 verification_url = get_verification_link(email, domain, proxies)
-                if verification_url and verify_email(verification_url, proxies):
+                if verification_url and verify_email(verification_url, proxies, solver_type, api_key):
                     log_message("Account verified successfully!", "success")
+                    
+                    with open("accounts.txt", "a") as f:
+                        f.write(f"Email: {email}\n")
+                        f.write(f"Password: {password}\n")
+                        f.write("-" * 50 + "\n")
                     
                     login_response = login_user(email, password, app_id, proxies)
                     if login_response:
                         token = login_response['data']['token']
-                        user_data = login_response['data']
-                        
                         verify_social_media(token, app_id, proxies)
-                        
                         total_points = get_user_points(token, app_id, proxies)
                         
-                        with open("accounts.txt", "a") as f:
-                            f.write(f"Email: {email}\n")
-                            f.write(f"Password: {password}\n")
-                            f.write(f"UserID: {user_data['user_id']}\n")
-                            f.write(f"Mnemonic: {user_data['wallet']['wallet_details']['Mnemonic']}\n")
-                            f.write(f"PrivateKey: {user_data['wallet']['wallet_details']['PrivateKey']}\n")
-                            f.write(f"Address: {user_data['wallet']['wallet_details']['Address']}\n")
+                        with open("accounts.txt", "r") as f:
+                            lines = f.readlines()
+                        with open("accounts.txt", "w") as f:
+                            f.writelines(lines[:-1])
                             f.write(f"Token: {token}\n")
                             f.write(f"Points: {total_points}\n")
                             f.write("-" * 50 + "\n")
+                        
                         with open("accounts-for-dawn-validator-bot.txt", "a") as f:
                             f.write(f"{email}:{token}\n")
+                        
                         print(f"\nAccount {current_account} success referred to {Fore.LIGHTMAGENTA_EX}{referral_code}{Fore.RESET}{Fore.LIGHTCYAN_EX}, Processing next account...{Fore.RESET}\n")
                         return True
                     else:
-                        log_message("Login failed", "error")
-                        return False
+                        log_message("Login failed, please login manually. Moving to next account...", "warning")
+                        print(f"\nAccount {current_account} registration success, but login failed. Moving to next account...\n")
+                        return True 
                 else:
                     log_message("Verification failed, retrying...", "warning")
                     retry_count += 1
@@ -636,14 +673,14 @@ def main():
         proxy_manager = ProxyManager()
         
         for current_account in range(1, num_accounts + 1):
-            if process_single_account(current_account, proxy_manager, None, referral_code, solver_type):
+            if process_single_account(current_account, proxy_manager, None, referral_code, captcha_api_key, solver_type):
                 successful_accounts += 1
             else:
                 failed_accounts += 1
                 
     except Exception as e:
         log_message(f"Fatal error: {str(e)}", "error")
-
+        
 if __name__ == "__main__":
     try:
         main()
