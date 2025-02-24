@@ -6,3 +6,4 @@ names
 requests
 2captcha-python
 anticaptchaofficial
+python-dotenv
