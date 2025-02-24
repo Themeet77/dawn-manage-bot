@@ -1,10 +1,8 @@
-Here’s a clean, professional `README.md` for your **Dawn Manage Bot** — following the same style as the one you shared:  
 
----
 
 # 🌅 Dawn Manage Bot
 
-Dawn Manage Bot is an automation tool designed to help you earn **Dawn tokens** effortlessly by managing multiple accounts and automating the necessary steps.  
+Dawn Manage Bot is an automation tool designed to help you get **Dawn tokens** effortlessly by managing multiple accounts and automating the necessary steps.  
 
 ## 🚀 Features
 - **Automated Dawn token farming**  
