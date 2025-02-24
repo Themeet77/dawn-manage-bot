@@ -78,7 +78,7 @@ your-email@gmail.com,app-id-12345
 another-email@gmail.com,app-id-67890
 ```
 
-- Add **proxies** to `proxies.txt` (HTTP only):
+- Add **proxies** to `proxy.txt` (HTTP only):
 ```plaintext
 http://127.0.0.1:8080
 http://user:pass@127.0.0.1:8080
